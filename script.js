@@ -1,5 +1,6 @@
 const { createFFmpeg, fetchFile } = FFmpeg;
 
+// Inicializa FFmpeg
 const ffmpeg = createFFmpeg({
   log: true
 });
@@ -13,71 +14,125 @@ const statusText = document.getElementById("statusText");
 const progressBar = document.getElementById("progress");
 const downloadBtn = document.getElementById("downloadBtn");
 
-let videoFile;
+let videoFile = null;
 
-// Upload tradicional
-videoInput.addEventListener("change", (e) => {
+/* ===============================
+   FUNÇÃO PARA MOSTRAR STATUS
+================================= */
+function setStatus(text, progress = null) {
+  statusText.innerText = text;
+  if (progress !== null) {
+    progressBar.style.width = progress + "%";
+  }
+}
+
+/* ===============================
+   CARREGAR FFMPEG EM BACKGROUND
+================================= */
+async function loadFFmpegIfNeeded() {
+  if (!ffmpeg.isLoaded()) {
+    setStatus("Preparando motor de edição...", 5);
+    await ffmpeg.load();
+  }
+}
+
+/* ===============================
+   AO SELECIONAR VÍDEO
+================================= */
+videoInput.addEventListener("change", async (e) => {
   videoFile = e.target.files[0];
+  if (!videoFile) return;
+
   originalPreview.src = URL.createObjectURL(videoFile);
+
+  const sizeMB = (videoFile.size / 1024 / 1024).toFixed(2);
+  setStatus(`Vídeo selecionado (${sizeMB} MB). Preparando ambiente...`, 10);
+
+  await loadFFmpegIfNeeded();
+  setStatus(`Vídeo pronto para processar (${sizeMB} MB).`, 0);
 });
 
-// Drag and Drop
+/* ===============================
+   DRAG AND DROP
+================================= */
 dropArea.addEventListener("dragover", (e) => {
   e.preventDefault();
 });
 
-dropArea.addEventListener("drop", (e) => {
+dropArea.addEventListener("drop", async (e) => {
   e.preventDefault();
   videoFile = e.dataTransfer.files[0];
+  if (!videoFile) return;
+
   originalPreview.src = URL.createObjectURL(videoFile);
+
+  const sizeMB = (videoFile.size / 1024 / 1024).toFixed(2);
+  setStatus(`Vídeo selecionado (${sizeMB} MB). Preparando ambiente...`, 10);
+
+  await loadFFmpegIfNeeded();
+  setStatus(`Vídeo pronto para processar (${sizeMB} MB).`, 0);
 });
 
+/* ===============================
+   PROCESSAR VÍDEO
+================================= */
 processBtn.addEventListener("click", async () => {
 
-  if (!videoFile) return alert("Selecione um vídeo primeiro.");
-
-  statusText.innerText = "Carregando FFmpeg...";
-  
-  if (!ffmpeg.isLoaded()) {
-    await ffmpeg.load();
+  if (!videoFile) {
+    alert("Selecione um vídeo primeiro.");
+    return;
   }
 
-  statusText.innerText = "Processando vídeo...";
+  try {
 
-  ffmpeg.setProgress(({ ratio }) => {
-    progressBar.style.width = `${ratio * 100}%`;
-  });
+    setStatus("Carregando vídeo na memória...", 15);
 
-  ffmpeg.FS("writeFile", "input.mp4", await fetchFile(videoFile));
+    // Escreve arquivo na memória virtual
+    ffmpeg.FS("writeFile", "input.mp4", await fetchFile(videoFile));
 
-  const minSilence = document.getElementById("minSilence").value;
-  const threshold = document.getElementById("threshold").value;
+    const minSilence = document.getElementById("minSilence").value;
+    const threshold = document.getElementById("threshold").value;
 
-  /*
-    Aqui configuramos o silenceremove.
-    Parâmetros dinâmicos vindos do painel.
-  */
-  const silenceFilter = 
-    `silenceremove=start_periods=1:start_duration=${minSilence}:start_threshold=${threshold}dB`;
+    // Configuração dinâmica do silenceremove
+    const silenceFilter =
+      `silenceremove=start_periods=1:start_duration=${minSilence}:start_threshold=${threshold}dB`;
 
-  await ffmpeg.run(
-    "-i", "input.mp4",
-    "-af", silenceFilter,
-    "-c:v", "libx264",
-    "-preset", "slow",
-    "-crf", "18",     // CRF baixo = alta qualidade
-    "-pix_fmt", "yuv420p",
-    "output.mp4"
-  );
+    setStatus("Processando vídeo (isso pode demorar)...", 20);
 
-  const data = ffmpeg.FS("readFile", "output.mp4");
-  const url = URL.createObjectURL(
-    new Blob([data.buffer], { type: "video/mp4" })
-  );
+    // Atualiza progresso real
+    ffmpeg.setProgress(({ ratio }) => {
+      const percent = Math.min(100, Math.round(ratio * 100));
+      progressBar.style.width = percent + "%";
+    });
 
-  finalPreview.src = url;
-  downloadBtn.href = url;
-  downloadBtn.style.display = "block";
+    await ffmpeg.run(
+      "-i", "input.mp4",
+      "-af", silenceFilter,
+      "-c:v", "libx264",
+      "-preset", "slow",     // melhor qualidade
+      "-crf", "18",          // CRF baixo = alta qualidade
+      "-pix_fmt", "yuv420p",
+      "-movflags", "+faststart",
+      "output.mp4"
+    );
 
-  statusText.innerText = "Finalizado!";
+    setStatus("Finalizando arquivo...", 95);
+
+    const data = ffmpeg.FS("readFile", "output.mp4");
+
+    const url = URL.createObjectURL(
+      new Blob([data.buffer], { type: "video/mp4" })
+    );
+
+    finalPreview.src = url;
+    downloadBtn.href = url;
+    downloadBtn.style.display = "block";
+
+    setStatus("Processamento finalizado com sucesso!", 100);
+
+  } catch (error) {
+    console.error(error);
+    setStatus("Erro durante o processamento.", 0);
+    alert("Ocorreu um erro ao processar o vídeo.");
+  }
 });
