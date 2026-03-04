@@ -1,42 +1,49 @@
 const { createFFmpeg, fetchFile } = FFmpeg;
 
-// Inicializa o FFmpeg corretamente
+// Inicializa FFmpeg com configuração correta
 const ffmpeg = createFFmpeg({ 
     log: true,
     corePath: 'https://unpkg.com/@ffmpeg/core@0.10.0/dist/ffmpeg-core.js'
 });
 
+let videoFile = null;
+let ffmpegLoaded = false;
+
+// Elementos do DOM (CORREÇÃO: removidos espaços dos IDs)
 const videoInput = document.getElementById("videoInput");
 const dropArea = document.getElementById("dropArea");
 const originalPreview = document.getElementById("originalPreview");
-const previewContainer = document.getElementById("previewContainer");
 const finalPreview = document.getElementById("finalPreview");
 const processBtn = document.getElementById("processBtn");
 const statusText = document.getElementById("statusText");
 const progressBar = document.getElementById("progress");
 const downloadBtn = document.getElementById("downloadBtn");
-const resultSection = document.getElementById("resultSection");
 
-let videoFile = null;
-
-// Carrega o FFmpeg ao iniciar
+// Carrega FFmpeg ao iniciar
 async function initFFmpeg() {
     try {
+        statusText.innerText = "Carregando FFmpeg...";
+        statusText.style.color = "#ffcc00";
+        
         if (!ffmpeg.isLoaded()) {
-            statusText.innerText = "Carregando FFmpeg...";
             await ffmpeg.load();
-            statusText.innerText = "FFmpeg pronto!";
         }
+        
+        ffmpegLoaded = true;
+        statusText.innerText = "FFmpeg pronto! Aguardando vídeo...";
+        statusText.style.color = "#00ffcc";
+        console.log("✅ FFmpeg carregado com sucesso!");
     } catch (error) {
-        console.error("Erro ao carregar FFmpeg:", error);
+        console.error("❌ Erro ao carregar FFmpeg:", error);
         statusText.innerText = "❌ Erro ao carregar FFmpeg. Recarregue a página.";
+        statusText.style.color = "#ff4444";
     }
 }
 
-// Inicializa ao carregar a página
-initFFmpeg();
+// Inicializa ao carregar página
+window.addEventListener('load', initFFmpeg);
 
-// Upload tradicional
+// Upload
 videoInput.addEventListener("change", (e) => {
     handleFile(e.target.files[0]);
 });
@@ -44,16 +51,16 @@ videoInput.addEventListener("change", (e) => {
 // Drag and Drop
 dropArea.addEventListener("dragover", (e) => {
     e.preventDefault();
-    dropArea.classList.add("dragover");
+    dropArea.style.borderColor = "#00ffcc";
 });
 
 dropArea.addEventListener("dragleave", () => {
-    dropArea.classList.remove("dragover");
+    dropArea.style.borderColor = "#555";
 });
 
 dropArea.addEventListener("drop", (e) => {
     e.preventDefault();
-    dropArea.classList.remove("dragover");
+    dropArea.style.borderColor = "#555";
     handleFile(e.dataTransfer.files[0]);
 });
 
@@ -69,10 +76,9 @@ function handleFile(file) {
     
     videoFile = file;
     originalPreview.src = URL.createObjectURL(videoFile);
-    if (previewContainer) {
-        previewContainer.style.display = "block";
-    }
-    statusText.innerText = "✓ Vídeo carregado! Pronto para processar.";
+    originalPreview.style.display = "block";
+    statusText.innerText = `✓ Vídeo carregado: ${file.name}`;
+    statusText.style.color = "#00ffcc";
 }
 
 processBtn.addEventListener("click", async () => {
@@ -81,27 +87,30 @@ processBtn.addEventListener("click", async () => {
         return;
     }
 
+    if (!ffmpegLoaded) {
+        alert("FFmpeg ainda não carregou. Aguarde...");
+        return;
+    }
+
     processBtn.disabled = true;
-    processBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processando...';
+    processBtn.innerHTML = '⏳ Processando...';
+    processBtn.style.background = "#666";
 
     try {
-        // Verifica se FFmpeg está carregado
-        if (!ffmpeg.isLoaded()) {
-            await initFFmpeg();
-        }
+        statusText.innerText = "Processando vídeo...";
+        statusText.style.color = "#00ccff";
+        progressBar.style.width = "0%";
 
-        statusText.innerText = "Preparando arquivos...";
-        
-        // Escreve o arquivo
+        // Escreve arquivo
         ffmpeg.FS("writeFile", "input.mp4", await fetchFile(videoFile));
 
-        // Pega os valores
+        // Pega valores
         const minSilence = document.getElementById("minSilence").value || "0.5";
         const threshold = document.getElementById("threshold").value || "-50";
 
-        statusText.innerText = `Aplicando corte (silêncio > ${minSilence}s, threshold: ${threshold}dB)...`;
+        console.log(`Configurações: minSilence=${minSilence}s, threshold=${threshold}dB`);
 
-        // CORREÇÃO: Remove os espaços das strings!
+        // CORREÇÃO: removidos espaços das strings
         await ffmpeg.run(
             "-i", "input.mp4",
             "-af", `silenceremove=start_periods=1:start_duration=${minSilence}:start_threshold=${threshold}dB`,
@@ -112,41 +121,38 @@ processBtn.addEventListener("click", async () => {
             "output.mp4"
         );
 
-        statusText.innerText = "Finalizando...";
-        
-        // Lê o arquivo de saída
+        // Lê resultado
         const data = ffmpeg.FS("readFile", "output.mp4");
         
-        // Cria URL para download
+        // Cria URL
         const url = URL.createObjectURL(new Blob([data.buffer], { type: "video/mp4" }));
         
         finalPreview.src = url;
+        finalPreview.style.display = "block";
         downloadBtn.href = url;
         downloadBtn.style.display = "block";
         
-        if (resultSection) {
-            resultSection.style.display = "block";
-            resultSection.scrollIntoView({ behavior: "smooth" });
-        }
-        
         progressBar.style.width = "100%";
-        statusText.innerText = "✓ Processamento concluído!";
-        
-        // Limpa arquivos temporários
+        statusText.innerText = "✓ Finalizado! Vídeo pronto para download.";
+        statusText.style.color = "#00ff88";
+
+        // Limpa arquivos
         ffmpeg.FS("unlink", "input.mp4");
         ffmpeg.FS("unlink", "output.mp4");
 
     } catch (error) {
-        console.error("Erro:", error);
-        statusText.innerText = "❌ Erro: " + error.message;
-        alert("Erro ao processar vídeo: " + error.message);
+        console.error("❌ Erro:", error);
+        statusText.innerText = `❌ Erro: ${error.message}`;
+        statusText.style.color = "#ff4444";
+        alert("Erro ao processar: " + error.message);
     } finally {
         processBtn.disabled = false;
-        processBtn.innerHTML = '<i class="fas fa-play"></i> Processar Vídeo';
+        processBtn.innerHTML = '▶ Processar Vídeo';
+        processBtn.style.background = "#00cc88";
     }
 });
 
-// Atualiza barra de progresso
+// Progresso
 ffmpeg.setProgress(({ ratio }) => {
     const percent = Math.round(ratio * 100);
     progressBar.style.width = `${percent}%`;
