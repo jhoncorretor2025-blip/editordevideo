@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jump Cut Automático</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- FFmpeg 0.10.0 — versão estável com suporte a wasm no browser -->
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.10.0/dist/ffmpeg.min.js"></script>
+</head>
+<body>
+
+    <div class="background-glow"></div>
+
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-cut"></i> Jump Cut Automático</h1>
+            <p class="subtitle">Remova silêncios do seu vídeo automaticamente no navegador.</p>
+            <div class="warning-box">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span>Processamento pesado. Usa CPU e RAM intensamente. Prefira vídeos curtos.</span>
+            </div>
+        </header>
+
+        <main class="grid-layout">
+            <!-- Upload -->
+            <section class="card upload-section">
+                <div id="dropArea" class="drop-zone">
+                    <input type="file" id="videoInput" accept="video/*" hidden>
+                    <div class="drop-content">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <p>Arraste o vídeo aqui ou <span class="highlight">clique para selecionar</span></p>
+                        <p class="small-text">Suporta MP4, WebM, MOV</p>
+                    </div>
+                </div>
+
+                <div class="video-preview-container" id="previewContainer" style="display:none;">
+                    <h3>Original</h3>
+                    <video id="originalPreview" controls></video>
+                </div>
+            </section>
+
+            <!-- Controles -->
+            <section class="card controls-section">
+                <h2><i class="fas fa-sliders-h"></i> Configuração</h2>
+
+                <div class="form-group">
+                    <label for="minSilence">Duração mínima do silêncio (segundos)</label>
+                    <input type="number" id="minSilence" value="0.5" step="0.1" min="0.1">
+                    <small>Silêncios mais curtos que isso <strong>não</strong> serão cortados.</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="threshold">Threshold de silêncio (dB)</label>
+                    <input type="number" id="threshold" value="-50" step="1" max="0">
+                    <small>-50 dB é padrão. Aumente para -35 se houver ruído de fundo.</small>
+                </div>
+
+                <button id="processBtn" class="btn-primary">
+                    <i class="fas fa-play"></i> Processar Vídeo
+                </button>
+
+                <div class="status-area">
+                    <div class="status-text" id="statusText">Carregando FFmpeg...</div>
+                    <div class="progress-container">
+                        <div id="progress" class="progress-bar"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Resultado -->
+        <section class="card result-section" id="resultSection" style="display:none;">
+            <h2><i class="fas fa-check-circle"></i> Processamento Concluído</h2>
+            <div class="video-preview-container">
+                <h3>Resultado</h3>
+                <video id="finalPreview" controls></video>
+            </div>
+            <a id="downloadBtn" class="btn-download" download="video_editado.mp4">
+                <i class="fas fa-download"></i> Baixar MP4
+            </a>
+        </section>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
