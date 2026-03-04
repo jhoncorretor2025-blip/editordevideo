@@ -1,13 +1,11 @@
-// Verifica se o FFmpeg está disponível
-if (typeof FFmpeg === 'undefined') {
-    alert("Erro: Biblioteca FFmpeg não carregada. Verifique sua conexão com a internet.");
-}
-
 const { createFFmpeg, fetchFile } = FFmpeg;
-let ffmpeg = null;
-let videoFile = null;
 
-// Elementos do DOM
+// Inicializa o FFmpeg corretamente
+const ffmpeg = createFFmpeg({ 
+    log: true,
+    corePath: 'https://unpkg.com/@ffmpeg/core@0.10.0/dist/ffmpeg-core.js'
+});
+
 const videoInput = document.getElementById("videoInput");
 const dropArea = document.getElementById("dropArea");
 const originalPreview = document.getElementById("originalPreview");
@@ -19,34 +17,28 @@ const progressBar = document.getElementById("progress");
 const downloadBtn = document.getElementById("downloadBtn");
 const resultSection = document.getElementById("resultSection");
 
-// Inicializa o FFmpeg
+let videoFile = null;
+
+// Carrega o FFmpeg ao iniciar
 async function initFFmpeg() {
     try {
-        statusText.innerText = "Inicializando FFmpeg...";
-        ffmpeg = createFFmpeg({ 
-            log: true,
-            corePath: 'https://unpkg.com/@ffmpeg/core@0.10.0/dist/ffmpeg-core.js'
-        });
-        
         if (!ffmpeg.isLoaded()) {
+            statusText.innerText = "Carregando FFmpeg...";
             await ffmpeg.load();
+            statusText.innerText = "FFmpeg pronto!";
         }
-        
-        statusText.innerText = "FFmpeg pronto! Aguardando vídeo...";
-        return true;
     } catch (error) {
         console.error("Erro ao carregar FFmpeg:", error);
         statusText.innerText = "❌ Erro ao carregar FFmpeg. Recarregue a página.";
-        return false;
     }
 }
 
 // Inicializa ao carregar a página
-window.addEventListener('load', initFFmpeg);
+initFFmpeg();
 
 // Upload tradicional
 videoInput.addEventListener("change", (e) => {
-    handleFileSelect(e.target.files[0]);
+    handleFile(e.target.files[0]);
 });
 
 // Drag and Drop
@@ -62,17 +54,14 @@ dropArea.addEventListener("dragleave", () => {
 dropArea.addEventListener("drop", (e) => {
     e.preventDefault();
     dropArea.classList.remove("dragover");
-    if (e.dataTransfer.files.length > 0) {
-        handleFileSelect(e.dataTransfer.files[0]);
-    }
+    handleFile(e.dataTransfer.files[0]);
 });
 
-// Clique na área de drop
 dropArea.addEventListener("click", () => {
     videoInput.click();
 });
 
-function handleFileSelect(file) {
+function handleFile(file) {
     if (!file || !file.type.startsWith('video/')) {
         alert("Por favor, selecione um arquivo de vídeo válido.");
         return;
@@ -80,46 +69,42 @@ function handleFileSelect(file) {
     
     videoFile = file;
     originalPreview.src = URL.createObjectURL(videoFile);
-    previewContainer.style.display = "block";
-    resultSection.style.display = "none";
-    downloadBtn.style.display = "none";
-    statusText.innerText = "✓ Vídeo carregado. Pronto para processar!";
-    progressBar.style.width = "0%";
+    if (previewContainer) {
+        previewContainer.style.display = "block";
+    }
+    statusText.innerText = "✓ Vídeo carregado! Pronto para processar.";
 }
 
 processBtn.addEventListener("click", async () => {
     if (!videoFile) {
-        alert("Selecione um vídeo primeiro.");
+        alert("Selecione um vídeo primeiro!");
         return;
-    }
-
-    if (!ffmpeg || !ffmpeg.isLoaded()) {
-        const initialized = await initFFmpeg();
-        if (!initialized) return;
     }
 
     processBtn.disabled = true;
     processBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processando...';
 
     try {
+        // Verifica se FFmpeg está carregado
+        if (!ffmpeg.isLoaded()) {
+            await initFFmpeg();
+        }
+
         statusText.innerText = "Preparando arquivos...";
         
-        // Escreve o arquivo no sistema virtual
+        // Escreve o arquivo
         ffmpeg.FS("writeFile", "input.mp4", await fetchFile(videoFile));
 
-        // Pega valores dos inputs
+        // Pega os valores
         const minSilence = document.getElementById("minSilence").value || "0.5";
         const threshold = document.getElementById("threshold").value || "-50";
 
-        // Configura filtro de silêncio
-        const silenceFilter = `silenceremove=start_periods=1:start_duration=${minSilence}:start_threshold=${threshold}dB`;
+        statusText.innerText = `Aplicando corte (silêncio > ${minSilence}s, threshold: ${threshold}dB)...`;
 
-        statusText.innerText = "Aplicando cortes de silêncio...";
-
-        // Executa FFmpeg (CORREÇÃO: sem espaços nas strings)
+        // CORREÇÃO: Remove os espaços das strings!
         await ffmpeg.run(
             "-i", "input.mp4",
-            "-af", silenceFilter,
+            "-af", `silenceremove=start_periods=1:start_duration=${minSilence}:start_threshold=${threshold}dB`,
             "-c:v", "libx264",
             "-preset", "medium",
             "-crf", "23",
@@ -129,7 +114,7 @@ processBtn.addEventListener("click", async () => {
 
         statusText.innerText = "Finalizando...";
         
-        // Lê o resultado
+        // Lê o arquivo de saída
         const data = ffmpeg.FS("readFile", "output.mp4");
         
         // Cria URL para download
@@ -137,9 +122,13 @@ processBtn.addEventListener("click", async () => {
         
         finalPreview.src = url;
         downloadBtn.href = url;
+        downloadBtn.style.display = "block";
         
-        resultSection.style.display = "block";
-        downloadBtn.style.display = "flex";
+        if (resultSection) {
+            resultSection.style.display = "block";
+            resultSection.scrollIntoView({ behavior: "smooth" });
+        }
+        
         progressBar.style.width = "100%";
         statusText.innerText = "✓ Processamento concluído!";
         
@@ -148,7 +137,7 @@ processBtn.addEventListener("click", async () => {
         ffmpeg.FS("unlink", "output.mp4");
 
     } catch (error) {
-        console.error("Erro no processamento:", error);
+        console.error("Erro:", error);
         statusText.innerText = "❌ Erro: " + error.message;
         alert("Erro ao processar vídeo: " + error.message);
     } finally {
@@ -157,11 +146,9 @@ processBtn.addEventListener("click", async () => {
     }
 });
 
-// Listener de progresso
-if (ffmpeg) {
-    ffmpeg.setProgress(({ ratio }) => {
-        const percentage = Math.round(ratio * 100);
-        progressBar.style.width = `${percentage}%`;
-        statusText.innerText = `Processando: ${percentage}%`;
-    });
-}
+// Atualiza barra de progresso
+ffmpeg.setProgress(({ ratio }) => {
+    const percent = Math.round(ratio * 100);
+    progressBar.style.width = `${percent}%`;
+    statusText.innerText = `Processando: ${percent}%`;
+});
