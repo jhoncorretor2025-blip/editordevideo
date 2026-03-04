@@ -182,20 +182,28 @@ async function processVideo() {
     setStatus('📦 Finalizando arquivo...', 'active', 92);
     const url = URL.createObjectURL(finalBlob);
 
-    const origDur   = audioBuf.duration;
-    const newDur    = segments.reduce((s,g) => s+g.end-g.start, 0);
-    const pctRemoved = ((1 - newDur/origDur)*100).toFixed(1);
+    const origDur    = audioBuf.duration;
+    // newDur: soma das durações reais dos segmentos mesclados (sem sobreposição)
+    const newDur     = segments.reduce((s, g) => s + (g.end - g.start), 0);
+    const pctRemoved = Math.max(0, ((1 - newDur / origDur) * 100)).toFixed(1);
 
     statSegs.textContent     = segments.length;
     statRemoved.textContent  = pctRemoved + '%';
     statDuration.textContent = formatTime(newDur);
 
-    vidResult.src = url;
-    dlBtn.href    = url;
-
     // Define extensão correta
     const ext = finalBlob.type.includes('mp4') ? 'mp4' : 'webm';
     dlBtn.download = `jumpcut.${ext}`;
+
+    vidResult.src = url;
+    dlBtn.href    = url;
+
+    // Após carregar o vídeo resultado, atualiza duração com valor real do arquivo
+    vidResult.addEventListener('loadedmetadata', () => {
+      if (vidResult.duration && isFinite(vidResult.duration)) {
+        statDuration.textContent = formatTime(vidResult.duration);
+      }
+    }, { once: true });
 
     resultSection.style.display = 'block';
     resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -461,9 +469,26 @@ function detectSpeechSegments(audioBuf, threshold, minSilMs, padMs) {
     if (!s && inSeg)  { raw.push({start:t0, end:i*fd}); inSeg=false; }
   }
 
-  return raw
-    .map(s => ({ start:Math.max(0,s.start-padSec), end:Math.min(totalDur,s.end+padSec) }))
-    .filter(s => s.end-s.start > 0.05);
+  // Aplica padding
+  const padded = raw.map(s => ({
+    start: Math.max(0, s.start - padSec),
+    end:   Math.min(totalDur, s.end + padSec),
+  }));
+
+  // Mescla segmentos sobrepostos após padding
+  if (padded.length === 0) return [];
+  padded.sort((a, b) => a.start - b.start);
+  const merged = [{ ...padded[0] }];
+  for (let i = 1; i < padded.length; i++) {
+    const last = merged[merged.length - 1];
+    if (padded[i].start <= last.end) {
+      last.end = Math.max(last.end, padded[i].end);
+    } else {
+      merged.push({ ...padded[i] });
+    }
+  }
+
+  return merged.filter(s => s.end - s.start > 0.05);
 }
 
 // ════════════════════════════════════════════════════════
