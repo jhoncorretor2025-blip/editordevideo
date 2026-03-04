@@ -123,11 +123,52 @@
         </button>
 
         <!-- Status -->
-        <div class="status-box">
-          <p class="status-box__text" id="statusText">Aguardando vídeo...</p>
-          <div class="progress-track">
-            <div class="progress-fill" id="progBar"></div>
+        <div class="status-box" id="statusBox">
+
+          <!-- Etapas -->
+          <div class="steps" id="steps">
+            <div class="step" id="step1" data-step="1">
+              <div class="step__icon">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              </div>
+              <span class="step__label">Decodificando áudio</span>
+              <span class="step__status"></span>
+            </div>
+            <div class="step" id="step2" data-step="2">
+              <div class="step__icon">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              </div>
+              <span class="step__label">Detectando silêncios</span>
+              <span class="step__status"></span>
+            </div>
+            <div class="step" id="step3" data-step="3">
+              <div class="step__icon">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+              </div>
+              <span class="step__label">Renderizando vídeo</span>
+              <span class="step__status" id="step3Detail"></span>
+            </div>
+            <div class="step" id="step4" data-step="4">
+              <div class="step__icon">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              </div>
+              <span class="step__label">Montando arquivo</span>
+              <span class="step__status"></span>
+            </div>
           </div>
+
+          <!-- Barra de progresso -->
+          <div class="progress-wrap">
+            <div class="progress-track">
+              <div class="progress-fill" id="progBar"></div>
+            </div>
+            <span class="progress-pct" id="progPct">0%</span>
+          </div>
+
+          <!-- Mensagem atual -->
+          <p class="status-box__text" id="statusText">Aguardando vídeo...</p>
+
+          <!-- Mapa de segmentos -->
           <div class="seg-viz" id="segViz">
             <p class="seg-viz__label">
               <span class="seg-viz__dot seg-viz__dot--green"></span> mantido
