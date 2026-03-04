@@ -1,86 +1,173 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jump Cut Automático</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JumpCut — Editor de Silêncios</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="background-glow"></div>
-    <div class="container">
-        <header>
-            <h1><i class="fas fa-cut"></i> Jump Cut Automático</h1>
-            <p class="subtitle">Remova silêncios do seu vídeo automaticamente no navegador.</p>
-            <div class="warning-box">
-                <i class="fas fa-check-circle"></i>
-                <span>100% nativo - Funciona no GitHub Pages!</span>
+
+  <!-- Fundo decorativo -->
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-orb bg-orb--tl" aria-hidden="true"></div>
+  <div class="bg-orb bg-orb--br" aria-hidden="true"></div>
+
+  <div class="app">
+
+    <!-- ── HEADER ── -->
+    <header class="header">
+      <div class="header__pill">
+        <span class="header__dot"></span>
+        browser-native · zero dependências
+      </div>
+      <h1 class="header__title">Jump<span>Cut</span></h1>
+      <p class="header__sub">// remove silêncios automaticamente no navegador</p>
+    </header>
+
+    <!-- ── MAIN GRID ── -->
+    <main class="main-grid">
+
+      <!-- Coluna esquerda: upload + preview -->
+      <section class="panel panel--upload">
+        <span class="panel__tag">01 / entrada</span>
+
+        <div class="drop-zone" id="dropZone" role="button" tabindex="0" aria-label="Área de upload de vídeo">
+          <input type="file" id="fileInput" accept="video/*" hidden>
+          <div class="drop-zone__icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="16 16 12 12 8 16"/>
+              <line x1="12" y1="12" x2="12" y2="21"/>
+              <path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/>
+            </svg>
+          </div>
+          <p class="drop-zone__title">Arraste o vídeo aqui</p>
+          <p class="drop-zone__sub">ou <button class="drop-zone__link" type="button">clique para selecionar</button></p>
+          <p class="drop-zone__hint">MP4 · WebM · MOV · AVI</p>
+        </div>
+
+        <div class="preview-block" id="previewBlock">
+          <p class="preview-block__label">Original</p>
+          <video class="video-player" id="vidOriginal" controls></video>
+          <canvas class="waveform" id="waveCanvas"></canvas>
+          <div class="file-info" id="fileInfo"></div>
+        </div>
+      </section>
+
+      <!-- Coluna direita: controles -->
+      <section class="panel panel--controls">
+        <span class="panel__tag">02 / configuração</span>
+
+        <!-- Botão de preset -->
+        <div class="preset-row">
+          <button class="preset-btn preset-btn--active" id="presetAuto" data-preset="auto">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            Automático
+          </button>
+          <button class="preset-btn" id="presetSuave" data-preset="suave">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            Suave
+          </button>
+          <button class="preset-btn" id="presetAgressivo" data-preset="agressivo">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            Agressivo
+          </button>
+        </div>
+
+        <!-- Toggle avançado -->
+        <button class="advanced-toggle" id="advancedToggle" aria-expanded="false">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></svg>
+          Configurações avançadas
+          <svg class="advanced-toggle__arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+
+        <!-- Painel avançado -->
+        <div class="advanced-panel" id="advancedPanel">
+          <div class="slider-group">
+            <div class="slider-group__header">
+              <label for="threshold">Threshold de silêncio</label>
+              <span class="slider-group__val" id="thresholdVal">0.020</span>
             </div>
-        </header>
+            <input type="range" id="threshold" min="0.001" max="0.1" step="0.001" value="0.02">
+            <p class="slider-group__hint">Amplitude 0–1. Valores maiores cortam mais. Padrão: 0.020</p>
+          </div>
 
-        <main class="grid-layout">
-            <section class="card upload-section">
-                <div id="dropArea" class="drop-zone">
-                    <input type="file" id="videoInput" accept="video/*" hidden>
-                    <div class="drop-content">
-                        <i class="fas fa-cloud-upload-alt"></i>
-                        <p>Arraste o vídeo aqui ou <span class="highlight">clique para selecionar</span></p>
-                        <p class="small-text">Suporta MP4, WebM, MOV</p>
-                    </div>
-                </div>
-                
-                <div class="video-preview-container" id="previewContainer" style="display: none;">
-                    <h3>Original</h3>
-                    <video id="originalPreview" controls muted></video>
-                    <div class="audio-waveform" id="waveform"></div>
-                </div>
-            </section>
-
-            <section class="card controls-section">
-                <h2><i class="fas fa-sliders-h"></i> Configuração</h2>
-                
-                <div class="form-group">
-                    <label for="minSilence">Tempo mínimo de silêncio (segundos)</label>
-                    <input type="number" id="minSilence" value="0.5" step="0.1" min="0">
-                </div>
-
-                <div class="form-group">
-                    <label for="threshold">Threshold de silêncio (dB)</label>
-                    <input type="number" id="threshold" value="-50" step="1" min="-100" max="0">
-                    <small>Valores mais altos (ex: -30) removem mais áudio. Valores baixos (ex: -60) são mais sensíveis.</small>
-                </div>
-
-                <button id="analyzeBtn" class="btn-secondary">
-                    <i class="fas fa-wave-square"></i> Analisar Áudio
-                </button>
-
-                <button id="processBtn" class="btn-primary" disabled>
-                    <i class="fas fa-play"></i> Processar Vídeo
-                </button>
-
-                <div class="status-area">
-                    <div class="status-text" id="statusText">Aguardando vídeo...</div>
-                    <div class="progress-container">
-                        <div id="progress" class="progress-bar"></div>
-                    </div>
-                </div>
-            </section>
-        </main>
-
-        <section class="card result-section" id="resultSection" style="display: none;">
-            <h2><i class="fas fa-check-circle"></i> Processamento Concluído</h2>
-            <div class="video-preview-container">
-                <h3>Resultado</h3>
-                <video id="finalPreview" controls></video>
+          <div class="slider-group">
+            <div class="slider-group__header">
+              <label for="minSilence">Silêncio mínimo</label>
+              <span class="slider-group__val" id="minSilenceVal">500ms</span>
             </div>
-            <a id="downloadBtn" class="btn-download" download="video_editado.webm">
-                <i class="fas fa-download"></i> Baixar Vídeo
-            </a>
-        </section>
-    </div>
+            <input type="range" id="minSilence" min="100" max="2000" step="50" value="500">
+            <p class="slider-group__hint">Silêncios mais curtos que isso são ignorados.</p>
+          </div>
 
-    <script src="script.js"></script>
+          <div class="slider-group">
+            <div class="slider-group__header">
+              <label for="padding">Padding nas bordas</label>
+              <span class="slider-group__val" id="paddingVal">80ms</span>
+            </div>
+            <input type="range" id="padding" min="0" max="300" step="10" value="80">
+            <p class="slider-group__hint">Margem extra para não cortar palavras bruscamente.</p>
+          </div>
+        </div>
+
+        <!-- Botão principal -->
+        <button class="run-btn" id="runBtn" disabled>
+          <span class="run-btn__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </span>
+          <span class="run-btn__spinner" id="spinner"></span>
+          <span id="btnLabel">Selecione um vídeo</span>
+        </button>
+
+        <!-- Status -->
+        <div class="status-box">
+          <p class="status-box__text" id="statusText">Aguardando vídeo...</p>
+          <div class="progress-track">
+            <div class="progress-fill" id="progBar"></div>
+          </div>
+          <div class="seg-viz" id="segViz">
+            <p class="seg-viz__label">
+              <span class="seg-viz__dot seg-viz__dot--green"></span> mantido
+              <span class="seg-viz__dot seg-viz__dot--red"></span> cortado
+            </p>
+            <canvas class="seg-viz__canvas" id="segCanvas" height="24"></canvas>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ── RESULTADO ── -->
+    <section class="result-section" id="resultSection">
+      <span class="panel__tag">03 / resultado</span>
+
+      <div class="result-stats" id="resultStats">
+        <div class="stat-card">
+          <span class="stat-card__val" id="statSegs">—</span>
+          <span class="stat-card__label">Segmentos</span>
+        </div>
+        <div class="stat-card stat-card--accent">
+          <span class="stat-card__val" id="statRemoved">—</span>
+          <span class="stat-card__label">Removido</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-card__val" id="statDuration">—</span>
+          <span class="stat-card__label">Duração final</span>
+        </div>
+      </div>
+
+      <video class="video-player video-player--result" id="vidResult" controls></video>
+
+      <a class="dl-btn" id="dlBtn" download="jumpcut.webm">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Baixar vídeo editado
+      </a>
+    </section>
+
+  </div><!-- /app -->
+
+  <script src="script.js"></script>
 </body>
 </html>
