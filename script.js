@@ -1,290 +1,354 @@
-const { createFFmpeg, fetchFile } = FFmpeg;
+let videoFile = null;
+let audioContext = null;
+let audioBuffer = null;
+let silenceRanges = [];
+let videoDuration = 0;
 
-const ffmpeg = createFFmpeg({
-    log: true,
-    corePath: 'https://unpkg.com/@ffmpeg/core@0.10.0/dist/ffmpeg-core.js',
-    progress: ({ ratio }) => {
-        const percent = Math.min(Math.round(ratio * 100), 100);
-        progressBar.style.width = `${percent}%`;
-        if (percent > 0 && percent < 100) {
-            statusText.innerText = `⚙️ Processando: ${percent}%`;
-        }
-    }
+// Elementos do DOM
+const videoInput = document.getElementById("videoInput");
+const dropArea = document.getElementById("dropArea");
+const originalPreview = document.getElementById("originalPreview");
+const finalPreview = document.getElementById("finalPreview");
+const previewContainer = document.getElementById("previewContainer");
+const processBtn = document.getElementById("processBtn");
+const analyzeBtn = document.getElementById("analyzeBtn");
+const statusText = document.getElementById("statusText");
+const progressBar = document.getElementById("progress");
+const downloadBtn = document.getElementById("downloadBtn");
+const resultSection = document.getElementById("resultSection");
+const waveformContainer = document.getElementById("waveform");
+
+// Upload tradicional
+videoInput.addEventListener("change", (e) => {
+    handleFileSelect(e.target.files[0]);
 });
 
-let videoFile = null;
-let ffmpegLoaded = false;
-
-const videoInput    = document.getElementById("videoInput");
-const dropArea      = document.getElementById("dropArea");
-const previewContainer = document.getElementById("previewContainer");
-const originalPreview  = document.getElementById("originalPreview");
-const finalPreview  = document.getElementById("finalPreview");
-const processBtn    = document.getElementById("processBtn");
-const statusText    = document.getElementById("statusText");
-const progressBar   = document.getElementById("progress");
-const downloadBtn   = document.getElementById("downloadBtn");
-const resultSection = document.getElementById("resultSection");
-
-// ─── Carrega FFmpeg ────────────────────────────────────────────────────────────
-async function initFFmpeg() {
-    try {
-        setStatus("Carregando FFmpeg (pode demorar)...", "#ffcc00");
-        await ffmpeg.load();
-        ffmpegLoaded = true;
-        setStatus("✅ FFmpeg pronto! Selecione um vídeo.", "#00ffcc");
-    } catch (err) {
-        console.error("Erro ao carregar FFmpeg:", err);
-        setStatus("❌ Erro ao carregar FFmpeg. Verifique o console e recarregue.", "#ff4444");
-    }
-}
-
-window.addEventListener('load', initFFmpeg);
-
-// ─── Upload / Drag-and-Drop ────────────────────────────────────────────────────
-videoInput.addEventListener("change", (e) => handleFile(e.target.files[0]));
-
+// Drag and Drop
 dropArea.addEventListener("dragover", (e) => {
     e.preventDefault();
     dropArea.classList.add("dragover");
 });
-dropArea.addEventListener("dragleave", () => dropArea.classList.remove("dragover"));
+
+dropArea.addEventListener("dragleave", () => {
+    dropArea.classList.remove("dragover");
+});
+
 dropArea.addEventListener("drop", (e) => {
     e.preventDefault();
     dropArea.classList.remove("dragover");
-    handleFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files.length > 0) {
+        handleFileSelect(e.dataTransfer.files[0]);
+    }
 });
-dropArea.addEventListener("click", () => videoInput.click());
 
-function handleFile(file) {
+dropArea.addEventListener("click", () => {
+    videoInput.click();
+});
+
+function handleFileSelect(file) {
     if (!file || !file.type.startsWith('video/')) {
         alert("Por favor, selecione um arquivo de vídeo válido.");
         return;
     }
+    
     videoFile = file;
-    originalPreview.src = URL.createObjectURL(file);
+    originalPreview.src = URL.createObjectURL(videoFile);
     previewContainer.style.display = "block";
     resultSection.style.display = "none";
-    setStatus(`✅ Vídeo carregado: ${file.name}`, "#00ffcc");
+    downloadBtn.style.display = "none";
+    processBtn.disabled = true;
+    analyzeBtn.disabled = false;
+    updateStatus("Vídeo carregado. Clique em 'Analisar Áudio'.");
+    progressBar.style.width = "0%";
+    
+    // Carrega duração do vídeo
+    originalPreview.onloadedmetadata = () => {
+        videoDuration = originalPreview.duration;
+        updateStatus(`Vídeo carregado (${videoDuration.toFixed(1)}s). Clique em 'Analisar Áudio'.`);
+    };
 }
 
-// ─── Processamento ─────────────────────────────────────────────────────────────
-processBtn.addEventListener("click", async () => {
-    if (!videoFile) { alert("Selecione um vídeo primeiro!"); return; }
-    if (!ffmpegLoaded) { alert("FFmpeg ainda não terminou de carregar. Aguarde..."); return; }
-
-    setBtn(false);
-    progressBar.style.width = "0%";
-    resultSection.style.display = "none";
-
+analyzeBtn.addEventListener("click", async () => {
+    if (!videoFile) {
+        alert("Selecione um vídeo primeiro.");
+        return;
+    }
+    
+    analyzeBtn.disabled = true;
+    updateStatus("Analisando áudio...", true);
+    
     try {
-        const minSilence = parseFloat(document.getElementById("minSilence").value) || 0.5;
-        const threshold  = parseFloat(document.getElementById("threshold").value)  || -50;
-
-        // ── Passo 1: Escreve o arquivo de entrada ──
-        setStatus("📥 Carregando vídeo na memória...", "#00ccff");
-        ffmpeg.FS("writeFile", "input.mp4", await fetchFile(videoFile));
-
-        // ── Passo 2: Extrai áudio para detectar silêncios ──
-        setStatus("🔍 Analisando áudio...", "#00ccff");
-        await ffmpeg.run(
-            "-i", "input.mp4",
-            "-vn",                  // sem vídeo
-            "-ar", "44100",
-            "-ac", "1",
-            "-f", "wav",
-            "audio.wav"
-        );
-
-        // ── Passo 3: Detecta segmentos de silêncio via silencedetect ──
-        // silencedetect imprime no log; capturamos via callback de log
-        const silenceLog = [];
-        const origLog = ffmpeg.setLogger;
-
-        // Registra logger temporário
-        ffmpeg.setLogger(({ message }) => {
-            silenceLog.push(message);
-        });
-
-        await ffmpeg.run(
-            "-i", "audio.wav",
-            "-af", `silencedetect=noise=${threshold}dB:duration=${minSilence}`,
-            "-f", "null",
-            "-"
-        );
-
-        ffmpeg.setLogger(({ type, message }) => {
-            if (type === "fferr") console.log(message);
-        });
-
-        // ── Passo 4: Parse dos intervalos de silêncio ──
-        const duration = await getVideoDuration();
-        const silences = parseSilences(silenceLog.join("\n"));
-
-        console.log("Silences detectados:", silences);
-
-        // ── Passo 5: Converte silences → segmentos a manter ──
-        const segments = silencesToKeep(silences, duration, 0.05); // 50ms padding
-
-        if (segments.length === 0) {
-            setStatus("⚠️ Nenhum silêncio encontrado com esses parâmetros.", "#ffcc00");
-            cleanup();
-            setBtn(true);
-            return;
-        }
-
-        console.log(`Segmentos a manter (${segments.length}):`, segments);
-
-        // ── Passo 6: Corta e concatena segmentos ──
-        setStatus(`✂️ Cortando ${segments.length} segmentos...`, "#00ccff");
-        progressBar.style.width = "10%";
-
-        // Gera arquivo de lista para concat
-        const segFiles = [];
-        for (let i = 0; i < segments.length; i++) {
-            const { start, end } = segments[i];
-            const segName = `seg_${i}.mp4`;
-            await ffmpeg.run(
-                "-ss", String(start),
-                "-to", String(end),
-                "-i", "input.mp4",
-                "-c:v", "libx264",
-                "-preset", "ultrafast",
-                "-crf", "23",
-                "-c:a", "aac",
-                "-avoid_negative_ts", "make_zero",
-                "-y",
-                segName
-            );
-            segFiles.push(segName);
-            progressBar.style.width = `${10 + Math.round((i / segments.length) * 70)}%`;
-        }
-
-        // ── Passo 7: Concatena todos os segmentos ──
-        setStatus("🔗 Concatenando segmentos...", "#00ccff");
-        progressBar.style.width = "80%";
-
-        const concatList = segFiles.map(f => `file '${f}'`).join("\n");
-        ffmpeg.FS("writeFile", "concat.txt", new TextEncoder().encode(concatList));
-
-        await ffmpeg.run(
-            "-f", "concat",
-            "-safe", "0",
-            "-i", "concat.txt",
-            "-c", "copy",
-            "-y",
-            "output.mp4"
-        );
-
-        // ── Passo 8: Lê resultado ──
-        setStatus("📤 Finalizando...", "#00ccff");
-        progressBar.style.width = "95%";
-
-        const data = ffmpeg.FS("readFile", "output.mp4");
-        const url  = URL.createObjectURL(new Blob([data.buffer], { type: "video/mp4" }));
-
-        finalPreview.src = url;
-        downloadBtn.href = url;
-        resultSection.style.display = "block";
-        progressBar.style.width = "100%";
-
-        const saved = duration > 0
-            ? ` (${((1 - segments.reduce((a, s) => a + s.end - s.start, 0) / duration) * 100).toFixed(1)}% removido)`
-            : "";
-        setStatus(`✅ Concluído! ${segments.length} segmentos mantidos${saved}.`, "#00ff88");
-
-        // Limpa arquivos temporários
-        cleanup(["input.mp4", "audio.wav", "concat.txt", ...segFiles, "output.mp4"]);
-
-    } catch (err) {
-        console.error("Erro:", err);
-        setStatus(`❌ Erro: ${err.message}`, "#ff4444");
-    } finally {
-        setBtn(true);
+        // Cria AudioContext
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Extrai áudio do vídeo
+        const arrayBuffer = await videoFile.arrayBuffer();
+        audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        
+        // Detecta silêncios
+        detectSilence();
+        
+        // Desenha waveform
+        drawWaveform();
+        
+        analyzeBtn.disabled = false;
+        processBtn.disabled = silenceRanges.length === 0;
+        updateStatus(`Análise concluída! ${silenceRanges.length} períodos de silêncio detectados.`);
+        
+    } catch (error) {
+        console.error("Erro na análise:", error);
+        updateStatus("❌ Erro na análise: " + error.message);
+        analyzeBtn.disabled = false;
     }
 });
 
-// ─── Helpers ───────────────────────────────────────────────────────────────────
-
-function setStatus(msg, color = "#a1a1aa") {
-    statusText.innerText = msg;
-    statusText.style.color = color;
+function detectSilence() {
+    const minSilence = parseFloat(document.getElementById("minSilence").value) || 0.5;
+    const threshold = parseFloat(document.getElementById("threshold").value) || -50;
+    
+    silenceRanges = [];
+    const channelData = audioBuffer.getChannelData(0); // Canal esquerdo
+    const sampleRate = audioBuffer.sampleRate;
+    
+    // Converte threshold dB para amplitude
+    const amplitudeThreshold = Math.pow(10, threshold / 20);
+    
+    let silenceStart = -1;
+    let samplesPerCheck = Math.floor(sampleRate / 10); // Check a cada 100ms
+    
+    for (let i = 0; i < channelData.length; i += samplesPerCheck) {
+        // Calcula RMS (Root Mean Square) para este bloco
+        let sum = 0;
+        const blockSize = Math.min(samplesPerCheck, channelData.length - i);
+        
+        for (let j = 0; j < blockSize; j++) {
+            sum += channelData[i + j] * channelData[i + j];
+        }
+        
+        const rms = Math.sqrt(sum / blockSize);
+        const time = i / sampleRate;
+        
+        if (rms < amplitudeThreshold) {
+            if (silenceStart === -1) {
+                silenceStart = time;
+            }
+        } else {
+            if (silenceStart !== -1) {
+                const silenceDuration = time - silenceStart;
+                if (silenceDuration >= minSilence) {
+                    silenceRanges.push({
+                        start: silenceStart,
+                        end: time,
+                        duration: silenceDuration
+                    });
+                }
+                silenceStart = -1;
+            }
+        }
+    }
+    
+    // Verifica se terminou em silêncio
+    if (silenceStart !== -1) {
+        const silenceDuration = (channelData.length / sampleRate) - silenceStart;
+        if (silenceDuration >= minSilence) {
+            silenceRanges.push({
+                start: silenceStart,
+                end: channelData.length / sampleRate,
+                duration: silenceDuration
+            });
+        }
+    }
+    
+    console.log("Silêncios detectados:", silenceRanges);
 }
 
-function setBtn(enabled) {
-    processBtn.disabled = !enabled;
-    processBtn.innerHTML = enabled
-        ? '<i class="fas fa-play"></i> Processar Vídeo'
-        : '⏳ Processando...';
-    processBtn.style.background = enabled ? "" : "#666";
-}
-
-async function getVideoDuration() {
-    return new Promise((resolve) => {
-        const tmp = document.createElement("video");
-        tmp.src = URL.createObjectURL(videoFile);
-        tmp.addEventListener("loadedmetadata", () => resolve(tmp.duration));
-        tmp.addEventListener("error", () => resolve(0));
+function drawWaveform() {
+    const canvas = document.createElement("canvas");
+    canvas.width = waveformContainer.offsetWidth;
+    canvas.height = waveformContainer.offsetHeight;
+    waveformContainer.innerHTML = "";
+    waveformContainer.appendChild(canvas);
+    
+    const ctx = canvas.getContext("2d");
+    const channelData = audioBuffer.getChannelData(0);
+    const step = Math.ceil(channelData.length / canvas.width);
+    const amp = canvas.height / 2;
+    
+    // Desenha waveform completo
+    ctx.fillStyle = "#2d313a";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    ctx.beginPath();
+    ctx.strokeStyle = "#00dc82";
+    ctx.lineWidth = 1;
+    
+    for (let i = 0; i < canvas.width; i++) {
+        let min = 1.0;
+        let max = -1.0;
+        
+        for (let j = 0; j < step; j++) {
+            const datum = channelData[(i * step) + j];
+            if (datum < min) min = datum;
+            if (datum > max) max = datum;
+        }
+        
+        ctx.moveTo(i, (1 + min) * amp);
+        ctx.lineTo(i, (1 + max) * amp);
+    }
+    
+    ctx.stroke();
+    
+    // Desenha áreas de silêncio em vermelho
+    silenceRanges.forEach(range => {
+        const startX = (range.start / videoDuration) * canvas.width;
+        const endX = (range.end / videoDuration) * canvas.width;
+        
+        ctx.fillStyle = "rgba(255, 0, 0, 0.3)";
+        ctx.fillRect(startX, 0, endX - startX, canvas.height);
     });
 }
 
-/**
- * Faz parse do log do silencedetect e retorna array de { start, end }
- */
-function parseSilences(log) {
-    const silences = [];
-    let current = {};
-
-    for (const line of log.split("\n")) {
-        const startMatch = line.match(/silence_start:\s*([\d.]+)/);
-        const endMatch   = line.match(/silence_end:\s*([\d.]+)/);
-
-        if (startMatch) {
-            current = { start: parseFloat(startMatch[1]) };
+processBtn.addEventListener("click", async () => {
+    if (!videoFile || silenceRanges.length === 0) {
+        alert("Nenhum silêncio detectado ou vídeo não carregado.");
+        return;
+    }
+    
+    processBtn.disabled = true;
+    analyzeBtn.disabled = true;
+    updateStatus("Processando vídeo...", true);
+    
+    try {
+        // Cria elementos para processamento
+        const video = document.createElement("video");
+        video.src = URL.createObjectURL(videoFile);
+        video.muted = false;
+        await new Promise(resolve => video.onloadeddata = resolve);
+        
+        // Cria canvas para capturar frames
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext("2d");
+        
+        // Cria stream de vídeo
+        const videoStream = canvas.captureStream(30); // 30 FPS
+        
+        // Cria stream de áudio
+        const audioDest = audioContext.createMediaStreamDestination();
+        const source = audioContext.createMediaElementSource(video);
+        source.connect(audioDest);
+        
+        // Combina streams
+        const combinedStream = new MediaStream([
+            ...videoStream.getVideoTracks(),
+            ...audioDest.stream.getAudioTracks()
+        ]);
+        
+        // Configura MediaRecorder
+        const mediaRecorder = new MediaRecorder(combinedStream, {
+            mimeType: "video/webm;codecs=vp9,opus"
+        });
+        
+        const chunks = [];
+        mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) chunks.push(e.data);
+        };
+        
+        mediaRecorder.onstop = () => {
+            const blob = new Blob(chunks, { type: "video/webm" });
+            const url = URL.createObjectURL(blob);
+            
+            finalPreview.src = url;
+            downloadBtn.href = url;
+            downloadBtn.download = "video_editado.webm";
+            downloadBtn.style.display = "flex";
+            resultSection.style.display = "block";
+            
+            updateStatus("✓ Processamento concluído!");
+            progressBar.style.width = "100%";
+            
+            processBtn.disabled = false;
+            analyzeBtn.disabled = false;
+        };
+        
+        // Calcula segmentos para manter (invertendo silêncios)
+        const keepSegments = [];
+        let currentTime = 0;
+        
+        silenceRanges.sort((a, b) => a.start - b.start);
+        
+        silenceRanges.forEach((silence, index) => {
+            if (currentTime < silence.start) {
+                keepSegments.push({
+                    start: currentTime,
+                    end: silence.start
+                });
+            }
+            currentTime = silence.end;
+            
+            // Último segmento
+            if (index === silenceRanges.length - 1 && currentTime < videoDuration) {
+                keepSegments.push({
+                    start: currentTime,
+                    end: videoDuration
+                });
+            }
+        });
+        
+        // Se não há silêncios, mantém tudo
+        if (keepSegments.length === 0) {
+            keepSegments.push({ start: 0, end: videoDuration });
         }
-        if (endMatch && current.start !== undefined) {
-            current.end = parseFloat(endMatch[1]);
-            silences.push({ ...current });
-            current = {};
+        
+        console.log("Segmentos para manter:", keepSegments);
+        
+        // Inicia gravação
+        mediaRecorder.start();
+        
+        // Processa cada segmento
+        for (const segment of keepSegments) {
+            updateStatus(`Processando: ${segment.start.toFixed(1)}s - ${segment.end.toFixed(1)}s`);
+            
+            video.currentTime = segment.start;
+            await new Promise(resolve => video.onseeked = resolve);
+            video.play();
+            
+            // Grava até o fim do segmento
+            await new Promise(resolve => {
+                const checkTime = () => {
+                    if (video.currentTime >= segment.end) {
+                        video.pause();
+                        resolve();
+                    } else {
+                        requestAnimationFrame(checkTime);
+                    }
+                };
+                checkTime();
+            });
+            
+            // Atualiza progresso
+            const progress = (segment.end / videoDuration) * 100;
+            progressBar.style.width = `${progress}%`;
         }
+        
+        // Para gravação
+        mediaRecorder.stop();
+        video.pause();
+        
+    } catch (error) {
+        console.error("Erro no processamento:", error);
+        updateStatus("❌ Erro: " + error.message);
+        processBtn.disabled = false;
+        analyzeBtn.disabled = false;
     }
+});
 
-    // silêncio que vai até o fim sem silence_end
-    if (current.start !== undefined && current.end === undefined) {
-        silences.push({ start: current.start, end: Infinity });
-    }
-
-    return silences;
-}
-
-/**
- * Converte intervalos de silêncio em segmentos a manter
- * padding: segundos extras ao redor de cada corte para evitar clipping
- */
-function silencesToKeep(silences, duration, padding = 0.05) {
-    if (silences.length === 0) return [{ start: 0, end: duration }];
-
-    const keep = [];
-    let cursor = 0;
-
-    for (const { start, end } of silences) {
-        const segEnd = Math.max(0, start - padding);
-        if (segEnd - cursor > 0.1) {  // ignora segmentos < 100ms
-            keep.push({ start: cursor, end: segEnd });
-        }
-        cursor = Math.min(end + padding, duration);
-    }
-
-    // Último segmento após o último silêncio
-    if (duration - cursor > 0.1) {
-        keep.push({ start: cursor, end: duration });
-    }
-
-    return keep;
-}
-
-function cleanup(files = []) {
-    for (const f of files) {
-        try { ffmpeg.FS("unlink", f); } catch (_) {}
+function updateStatus(message, isLoading = false) {
+    statusText.innerText = message;
+    if (isLoading) {
+        statusText.classList.add("loading-dots");
+    } else {
+        statusText.classList.remove("loading-dots");
     }
 }
