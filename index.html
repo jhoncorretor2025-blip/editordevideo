@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Jump Cut Automático</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="container">
+
+  <h1>Jump Cut Automático</h1>
+  <p class="warning">
+    ⚠️ Processamento pesado. Usa CPU e RAM intensamente.
+  </p>
+
+  <div class="upload-area" id="dropArea">
+    <input type="file" id="videoInput" accept="video/*">
+    <p>Arraste o vídeo aqui ou clique para selecionar</p>
+  </div>
+
+  <video id="originalPreview" controls></video>
+
+  <div class="panel">
+    <h2>Configuração de Silêncio</h2>
+
+    <label>
+      Tempo mínimo de silêncio (segundos)
+      <input type="number" id="minSilence" value="0.5" step="0.1">
+    </label>
+
+    <label>
+      Threshold de silêncio (dB)
+      <input type="number" id="threshold" value="-35">
+    </label>
+
+    <button id="processBtn">Processar Vídeo</button>
+  </div>
+
+  <div class="status">
+    <p id="statusText">Aguardando vídeo...</p>
+    <div class="progress-bar">
+      <div id="progress"></div>
+    </div>
+  </div>
+
+  <video id="finalPreview" controls></video>
+  <a id="downloadBtn" download="resultado.mp4">Baixar MP4</a>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.6/dist/ffmpeg.min.js"></script>
+<script src="script.js"></script>
+
+</body>
+</html>

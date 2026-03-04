@@ -1,0 +1,94 @@
+body {
+  background: #111;
+  color: white;
+  font-family: Arial, sans-serif;
+  margin: 0;
+}
+
+.container {
+  max-width: 900px;
+  margin: auto;
+  padding: 20px;
+}
+
+h1 {
+  text-align: center;
+}
+
+.warning {
+  color: #ffcc00;
+  text-align: center;
+}
+
+.upload-area {
+  border: 2px dashed #555;
+  padding: 40px;
+  text-align: center;
+  cursor: pointer;
+  margin-bottom: 20px;
+}
+
+.upload-area:hover {
+  border-color: #00ffcc;
+}
+
+video {
+  width: 100%;
+  margin: 15px 0;
+  background: black;
+}
+
+.panel {
+  background: #222;
+  padding: 15px;
+  border-radius: 6px;
+}
+
+.panel label {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.panel input {
+  width: 100%;
+  padding: 5px;
+}
+
+button {
+  background: #00cc88;
+  border: none;
+  padding: 10px;
+  color: black;
+  font-weight: bold;
+  cursor: pointer;
+  width: 100%;
+}
+
+.status {
+  margin-top: 20px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 20px;
+  background: #333;
+  border-radius: 5px;
+}
+
+#progress {
+  height: 100%;
+  width: 0%;
+  background: #00ffcc;
+  transition: width 0.3s;
+}
+
+#downloadBtn {
+  display: none;
+  background: #0088ff;
+  padding: 10px;
+  color: white;
+  text-align: center;
+  text-decoration: none;
+  margin-top: 10px;
+  display: block;
+}
